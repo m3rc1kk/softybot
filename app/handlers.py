@@ -1,13 +1,24 @@
+import os
+
 from aiogram import Router, F
 from aiogram.filters import CommandStart
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, Message, FSInputFile, BufferedInputFile
 import app.keyboards as kb
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 import aiohttp
 
 
-class ProgramStates(StatesGroup):
+PROGRAM_FOLDER = 'program_files'
+PROGRAM_FILES = {
+    'Adobe Photoshop': 'photoshop.txt',
+    'Blender': 'blender.txt',
+    'VScode': 'vscode.pdf',
+    'PyCharm': 'pycharm.pdf',
+}
+
+class ProgramActions(StatesGroup):
+    waiting_action = State()
     waiting_query = State()
 
 router = Router()
@@ -39,16 +50,55 @@ async def search_rutube_video(query: str, program_name: str):
 async def main(message: Message):
     await message.answer('💠Главное меню SoftyBot \n Выбери программу — помогу разобраться!', reply_markup= kb.main)
 
-
 @router.callback_query(F.data.in_(['Adobe Photoshop', 'Blender', 'VScode', 'PyCharm']))
-async def ask_program(callback: CallbackQuery, state: FSMContext):
+async def select_program(callback: CallbackQuery, state:FSMContext):
     program_name = callback.data
-    await callback.answer('')
-    await callback.message.edit_text(f'💡Введите свой запрос по {program_name}')
-    await state.set_state(ProgramStates.waiting_query)
+    await callback.answer()
     await state.update_data(current_program=program_name)
 
-@router.message(ProgramStates.waiting_query)
+    await callback.message.edit_text(f'🔹 Вы выбрали: {program_name}\n Выберите действие', reply_markup=kb.action_with_program)
+
+    await state.set_state(ProgramActions.waiting_action)
+
+@router.callback_query(ProgramActions.waiting_action, F.data == 'find_video')
+async def ask_program(callback:CallbackQuery , state: FSMContext):
+    data = await state.get_data()
+    program_name = data['current_program']
+    try:
+        await callback.message.edit_text(f'💡Введите свой запрос по {program_name}')
+    except:
+        await callback.message.answer(f'💡Введите свой запрос по {program_name}')
+    await state.set_state(ProgramActions.waiting_query)
+    await callback.answer()
+
+@router.callback_query(ProgramActions.waiting_action, F.data == 'get_file')
+async def send_useful_file(callback:CallbackQuery, state: FSMContext):
+    await callback.answer()
+    data = await state.get_data()
+    program_name = data['current_program']
+
+    file_name = PROGRAM_FILES.get(program_name)
+    if file_name:
+        file_path = os.path.join(PROGRAM_FOLDER, file_name)
+        if os.path.exists(file_path):
+            file = BufferedInputFile(
+                open(file_path, 'rb').read(),
+                filename = file_name
+            )
+
+            await callback.message.answer_document(
+                file,
+                caption = f'🧿 Полезный файл для {program_name}',
+                reply_markup=kb.action_with_program_video
+            )
+        else:
+            await callback.answer("❌ Файл временно недоступен", show_alert=True)
+    else:
+        await callback.answer("ℹ️ Для этой программы нет файлов", show_alert=True)
+
+    await state.set_state(ProgramActions.waiting_action)
+
+@router.message(ProgramActions.waiting_query)
 async def handle_program(message: Message, state: FSMContext):
     await message.answer('🔎 Мы обрабатываем ваш запрос, это может занять некоторое время')
     data = await state.get_data()
