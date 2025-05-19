@@ -11,10 +11,10 @@ import aiohttp
 
 PROGRAM_FOLDER = 'program_files'
 PROGRAM_FILES = {
-    'Adobe Photoshop': 'photoshop.txt',
-    'Blender': 'blender.txt',
-    'VScode': 'vscode.pdf',
-    'PyCharm': 'pycharm.pdf',
+    'IDE': ['Pycharm.pdf', ],
+    'Office Programs': ['Word.pdf', ],
+    'Messengers': ['VK_Android.pdf', 'VK_IOS.pdf', 'VK_Web.pdf', 'VK_PC.pdf', 'WhatsApp_Android.pdf', 'WhatsApp_IOS.pdf', ],
+    'Graphic Editors': ['Pycharm.pdf', ],
 }
 
 class ProgramActions(StatesGroup):
@@ -50,7 +50,7 @@ async def search_rutube_video(query: str, program_name: str):
 async def main(message: Message):
     await message.answer('💠Главное меню SoftyBot \n Выбери программу — помогу разобраться!', reply_markup= kb.main)
 
-@router.callback_query(F.data.in_(['Adobe Photoshop', 'Blender', 'VScode', 'PyCharm']))
+@router.callback_query(F.data.in_(['IDE', 'Office Programs', 'Messengers', 'Graphic Editors']))
 async def select_program(callback: CallbackQuery, state:FSMContext):
     program_name = callback.data
     await callback.answer()
@@ -71,28 +71,42 @@ async def ask_program(callback:CallbackQuery , state: FSMContext):
     await state.set_state(ProgramActions.waiting_query)
     await callback.answer()
 
+
+from aiogram.types import InputMediaDocument
+
+
 @router.callback_query(ProgramActions.waiting_action, F.data == 'get_file')
-async def send_useful_file(callback:CallbackQuery, state: FSMContext):
+async def send_useful_file(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     data = await state.get_data()
     program_name = data['current_program']
 
-    file_name = PROGRAM_FILES.get(program_name)
-    if file_name:
-        file_path = os.path.join(PROGRAM_FOLDER, file_name)
-        if os.path.exists(file_path):
-            file = BufferedInputFile(
-                open(file_path, 'rb').read(),
-                filename = file_name
-            )
+    file_names = PROGRAM_FILES.get(program_name)
+    if file_names:
+        media_group = []
+        files_available = False
+        await callback.message.answer(f'🧿 Полезные файлы для {program_name}')
+        for file_name in file_names:
+            file_path = os.path.join(PROGRAM_FOLDER, file_name)
+            if os.path.exists(file_path):
+                with open(file_path, 'rb') as f:
+                    file_data = f.read()
 
-            await callback.message.answer_document(
-                file,
-                caption = f'🧿 Полезный файл для {program_name}',
+                media_group.append(
+                    InputMediaDocument(
+                        media=BufferedInputFile(file_data, filename=file_name),
+                    )
+                )
+                files_available = True
+
+        if files_available:
+            await callback.message.answer_media_group(media_group)
+            await callback.message.answer(
+                "Выберите следующее действие:",
                 reply_markup=kb.action_with_program_video
             )
         else:
-            await callback.answer("❌ Файл временно недоступен", show_alert=True)
+            await callback.answer("❌ Все файлы временно недоступны", show_alert=True)
     else:
         await callback.answer("ℹ️ Для этой программы нет файлов", show_alert=True)
 
